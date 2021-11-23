@@ -9,6 +9,8 @@ import colorama
 import numpy as np
 import torch
 
+from torch.utils.tensorboard import SummaryWriter
+
 import logger
 from holistic_records import EpochRecorder
 from utils.moving_averages import MovingAverage
@@ -413,7 +415,7 @@ def exec_runtime(args,
     # They want to be called with a validation loss..
     # ----------------------------------------------------------------------------------------------
     validation_scheduler = (lr_scheduler is not None and args.lr_scheduler == "ReduceLROnPlateau")
-
+    writer = SummaryWriter('Runs/cifar10_allconvnet_probout')
     # --------------------------------------------------------
     # Log some runtime info
     # --------------------------------------------------------
@@ -461,6 +463,23 @@ def exec_runtime(args,
     for epoch in range(args.start_epoch, args.total_epochs + 1):
         with logger.LoggingBlock("Epoch %i/%i" % (epoch, args.total_epochs), emph=True):
 
+            
+            # -------------------------------------------
+            # Create and run a training epoch
+            # -------------------------------------------
+            if train_loader is not None:
+                avg_loss_dict, _ = TrainingEpoch(
+                    args,
+                    desc="   Train",
+                    device=device,
+                    model_and_loss=model_and_loss,
+                    optimizer=optimizer,
+                    loader=train_loader,
+                    augmentation=training_augmentation).run()
+                
+                writer.add_scalar('Accuracy_per_epoch/train', avg_loss_dict['top1'], epoch)
+                writer.add_scalar("Loss_per_epoch/train", avg_loss_dict['total_loss'], epoch)
+
             # --------------------------------------------------------
             # Update standard learning scheduler
             # --------------------------------------------------------
@@ -474,19 +493,6 @@ def exec_runtime(args,
                 logging.info("model: %s  lr: %s" % (args.model, format_learning_rate(args.optimizer_lr)))
             else:
                 logging.info("model: %s  lr: %s" % (args.model, format_learning_rate(lr_scheduler.get_lr())))
-
-            # -------------------------------------------
-            # Create and run a training epoch
-            # -------------------------------------------
-            if train_loader is not None:
-                avg_loss_dict, _ = TrainingEpoch(
-                    args,
-                    desc="   Train",
-                    device=device,
-                    model_and_loss=model_and_loss,
-                    optimizer=optimizer,
-                    loader=train_loader,
-                    augmentation=training_augmentation).run()
 
             # -------------------------------------------
             # Create and run a validation epoch
@@ -509,10 +515,15 @@ def exec_runtime(args,
                         recorder=epoch_recorder,
                         augmentation=validation_augmentation).run()
 
+
+                writer.add_scalar('Accuracy_per_epoch/valid', avg_loss_dict['top1'], epoch)
+                
                 # ----------------------------------------------------------------
                 # Evaluate valdiation losses
                 # ----------------------------------------------------------------
                 validation_losses = [avg_loss_dict[vkey] for vkey in args.validation_keys]
+                writer.add_scalar("Loss_per_epoch/valid", validation_losses[0], epoch)
+
                 for i, (vkey, vminimize) in enumerate(zip(args.validation_keys, args.validation_keys_minimize)):
                     if vminimize:
                         store_as_best[i] = validation_losses[i] < best_validation_losses[i]
@@ -562,5 +573,8 @@ def exec_runtime(args,
     # ----------------------------------------------------------------
     # Finish
     # ----------------------------------------------------------------
+    writer.flush()
+    writer.close()
+    
     total_progress.close()
     logging.info("Finished.")

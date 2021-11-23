@@ -2,7 +2,7 @@
 
 # meta
 CHECKPOINT=None
-CIFAR_HOME=/fastdata/cifar
+CIFAR_HOME=/visinf/home/shamidi/fastdata
 MODEL=AllConvNetProbOut
 TIME=$(date +"%Y%m%d-%H%M%S")
 PREFIX="train-cifar-ProbOut"
